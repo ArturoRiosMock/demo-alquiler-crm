@@ -36,3 +36,10 @@ Thumbs.db
 # Excel files de ejemplo (datos sensibles)
 *.xlsx
 *.xls
+
+# Credential files
+neondatabase.md
+supabecredential.md
+
+# Temporary scripts
+scripts/
