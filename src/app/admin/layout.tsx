@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, ShoppingCart, Handshake, CheckSquare, BarChart3, Settings } from "lucide-react";
+import { Building2, ShoppingCart, Handshake, CheckSquare, BarChart3, Settings, LogOut } from "lucide-react";
+import { signOut } from "@/app/login/actions";
 
 const navItems = [
   { href: "/admin", label: "Activos", icon: Building2 },
@@ -50,9 +51,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        <div className="mt-auto flex h-8 w-8 items-center justify-center rounded-full bg-navy3 text-[10px] font-semibold text-white/60">
-          AD
-        </div>
+        <form action={signOut} className="mt-auto">
+          <button
+            type="submit"
+            className="flex w-14 flex-col items-center justify-center gap-1.5 rounded-lg py-2.5 text-white/40 transition-all hover:bg-white/[0.05] hover:text-red-400"
+            title="Cerrar sesión"
+          >
+            <LogOut size={18} strokeWidth={1.5} />
+            <span className="text-[9px] font-medium uppercase tracking-[0.8px]">Salir</span>
+          </button>
+        </form>
       </aside>
 
       <main className="ml-[72px] flex flex-1 flex-col min-h-screen">
