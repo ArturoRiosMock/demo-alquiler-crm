@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, ShoppingCart, Handshake, CheckSquare, BarChart3, Settings, LogOut } from "lucide-react";
+import { Building2, ShoppingCart, Handshake, CheckSquare, BarChart3, Settings, LogOut, FileText } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 
 const navItems = [
@@ -10,6 +10,7 @@ const navItems = [
   { href: "/admin/compradores", label: "Compradores", icon: ShoppingCart },
   { href: "/admin/vendedores", label: "Vendedores", icon: Handshake },
   { href: "/admin/tareas", label: "Tareas", icon: CheckSquare, sep: true },
+  { href: "/admin/ofertas", label: "Ofertas", icon: FileText },
   { href: "/admin/informes", label: "Informes", icon: BarChart3 },
   { href: "/admin/config", label: "Config", icon: Settings, sep: true },
 ];

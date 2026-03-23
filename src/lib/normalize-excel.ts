@@ -1,8 +1,6 @@
 import type { Asset, AssetAdmin } from "./types";
 import * as XLSX from "xlsx";
-
-const DEFAULT_MAP =
-  "https://maps.geoapify.com/v1/staticmap?center=lonlat:0,40&zoom=6&width=600&height=400&style=osm-bright&apiKey=f49f352595844e8e96f5222bc7370726";
+import { defaultMapUrlForClient } from "./map-default";
 
 function emptyAdm(): AssetAdmin {
   return {
@@ -52,7 +50,7 @@ function faseToFaseC(fase: string): string {
  * 7=CD Referencia Catastral, 8=Dirección Completa, 9=CP, 10=Municipio, 11=Provincia,
  * 12=CCAA, 13=Tipo Inmueble, 14=Juzgado, 15=Código Proc., 16=Última Fase, 17=Importe Reclamado, 18=Tasación
  */
-function parseProveedor1(rows: unknown[][]): Asset[] {
+function parseProveedor1(rows: unknown[][], defaultMap: string): Asset[] {
   const assets: Asset[] = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] as unknown[];
@@ -89,7 +87,7 @@ function parseProveedor1(rows: unknown[][]): Asset[] {
       fase, faseC: faseToFaseC(fase),
       precio, fav: false, chk: false, sqm: null,
       tvia: "—", nvia: "—", num: "—", esc: "—", pla: "—", pta: "—",
-      map: DEFAULT_MAP, catRef,
+      map: defaultMap, catRef,
       clase: "—", uso: "—", bien: tip,
       supC: "—", supG: "—", coef: "—", ccaa,
       fullAddr, desc: fullAddr,
@@ -112,7 +110,7 @@ function parseProveedor1(rows: unknown[][]): Asset[] {
  * 34=BUCKET LIQUIDEZ, 35=LOCALIZACIÓN BUCKETS, 36=STATUS MF, 37=Resultado Subasta,
  * 38=CONTACT - ASSET, 39=CONN - CONTRACT - ASSET
  */
-function parseProveedor2(rows: unknown[][]): Asset[] {
+function parseProveedor2(rows: unknown[][], defaultMap: string): Asset[] {
   const assets: Asset[] = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] as unknown[];
@@ -190,7 +188,7 @@ function parseProveedor2(rows: unknown[][]): Asset[] {
       fase: ejmap, faseC: faseToFaseC(ejmap),
       precio, fav: false, chk: false, sqm: null,
       tvia: "—", nvia: "—", num: "—", esc: "—", pla: "—", pta: "—",
-      map: DEFAULT_MAP, catRef,
+      map: defaultMap, catRef,
       clase: "—", uso: tcol, bien: scol,
       supC: "—", supG: "—", coef: "—", ccaa,
       fullAddr: addr, desc: addr,
@@ -207,7 +205,7 @@ function parseProveedor2(rows: unknown[][]): Asset[] {
  * 6=city, 7=ADRESS, 8=Nº, 9=ZIP, 10=SQM, 11=REFERENCIA CATASTRAL,
  * 12=GVB, 13=AUCTION BASE, 14=legaltype, 15=legalphase, 16=Nuevo, 17=ref cat
  */
-function parseProveedor3(rows: unknown[][]): Asset[] {
+function parseProveedor3(rows: unknown[][], defaultMap: string): Asset[] {
   const assets: Asset[] = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] as unknown[];
@@ -252,7 +250,7 @@ function parseProveedor3(rows: unknown[][]): Asset[] {
       fase: legalphase, faseC: faseToFaseC(legalphase),
       precio: gvb, fav: false, chk: false, sqm,
       tvia: "—", nvia: adress, num, esc: "—", pla: "—", pta: "—",
-      map: DEFAULT_MAP, catRef,
+      map: defaultMap, catRef,
       clase: "—", uso: "—", bien: tip,
       supC: sqm != null ? `${sqm} m²` : "—",
       supG: "—", coef: "—", ccaa: "—",
@@ -271,7 +269,8 @@ function parseProveedor3(rows: unknown[][]): Asset[] {
  * 12=Planta, 13=Puerta, 14=Sup. Construida, 15=Sup. Gráfica, 16=Longitud, 17=Latitud,
  * 18=Antigüedad, 19=Coeficiente, 20=Descripción Activo, 21=URL Imagen
  */
-function parseEnriquecido(rows: unknown[][]): Map<string, Partial<Asset>> {
+function parseEnriquecido(rows: unknown[][], defaultMap: string): Map<string, Partial<Asset>> {
+  const geoKey = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_GEOAPIFY_KEY?.trim() ?? "" : "";
   const byRef = new Map<string, Partial<Asset>>();
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] as unknown[];
@@ -282,11 +281,14 @@ function parseEnriquecido(rows: unknown[][]): Map<string, Partial<Asset>> {
     const supC = toNum(row[14]);
     const supG = toNum(row[15]);
     const urlImg = s(row[21]);
-    const mapUrl = urlImg !== "—" && urlImg.startsWith("http")
-      ? urlImg
-      : (lat !== "—" && lon !== "—"
-          ? `https://maps.geoapify.com/v1/staticmap?center=lonlat:${lon},${lat}&zoom=15&width=600&height=400&style=osm-bright&apiKey=f49f352595844e8e96f5222bc7370726`
-          : DEFAULT_MAP);
+    const mapUrl =
+      urlImg !== "—" && urlImg.startsWith("http")
+        ? urlImg
+        : lat !== "—" && lon !== "—" && geoKey
+          ? `https://maps.geoapify.com/v1/staticmap?center=lonlat:${lon},${lat}&zoom=15&width=600&height=400&style=osm-bright&apiKey=${encodeURIComponent(geoKey)}`
+          : lat !== "—" && lon !== "—"
+            ? `https://staticmap.openstreetmap.de/staticmap?center=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&zoom=15&size=600x400`
+            : defaultMap;
 
     byRef.set(ref, {
       catRef: ref,
@@ -323,6 +325,51 @@ function enrichAssets(assets: Asset[], enriquecido: Map<string, Partial<Asset>>)
   });
 }
 
+function isEmptyAdmVal(v: string): boolean {
+  return v === "—" || v === "" || v == null;
+}
+
+/** Une dos bloques adm: gana el valor “útil” de cualquiera de los dos (misma fila en varias hojas). */
+function mergeAdmPreferNonEmpty(a: AssetAdmin, b: AssetAdmin): AssetAdmin {
+  const keys = Object.keys(a) as (keyof AssetAdmin)[];
+  const out = { ...a };
+  for (const k of keys) {
+    const av = String(a[k]);
+    const bv = String(b[k]);
+    if (!isEmptyAdmVal(bv)) out[k] = b[k];
+    else if (!isEmptyAdmVal(av)) out[k] = a[k];
+    else out[k] = "—";
+  }
+  return out;
+}
+
+/** Mismo activo (id) aparece en varias hojas: combinar sin perder CRM de Proveedor 2 ni datos de 1/3. */
+function mergeAssetsSameId(prev: Asset, curr: Asset): Asset {
+  const adm = mergeAdmPreferNonEmpty(prev.adm, curr.adm);
+  const pickStr = (p: string, c: string) => (c && c !== "—" ? c : p && p !== "—" ? p : c || p || "—");
+  return {
+    ...prev,
+    ...curr,
+    cat: pickStr(prev.cat, curr.cat),
+    prov: pickStr(prev.prov, curr.prov),
+    pob: pickStr(prev.pob, curr.pob),
+    cp: pickStr(prev.cp, curr.cp),
+    addr: pickStr(prev.addr, curr.addr),
+    tip: pickStr(prev.tip, curr.tip),
+    fase: pickStr(prev.fase, curr.fase),
+    tipC: curr.tip && curr.tip !== "—" ? curr.tipC : prev.tipC,
+    faseC: curr.fase && curr.fase !== "—" ? curr.faseC : prev.faseC,
+    precio: curr.precio != null ? curr.precio : prev.precio,
+    sqm: curr.sqm != null ? curr.sqm : prev.sqm,
+    catRef: pickStr(prev.catRef, curr.catRef),
+    desc: pickStr(prev.desc, curr.desc),
+    ccaa: pickStr(prev.ccaa, curr.ccaa),
+    fullAddr: pickStr(prev.fullAddr, curr.fullAddr),
+    map: curr.map && curr.map !== prev.map ? curr.map : prev.map || curr.map,
+    adm,
+  };
+}
+
 export function parseExcelFile(file: File): Promise<Asset[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -331,6 +378,7 @@ export function parseExcelFile(file: File): Promise<Asset[]> {
         const data = e.target?.result;
         if (!data) { reject(new Error("No se pudo leer el archivo")); return; }
         const wb = XLSX.read(data, { type: "binary", cellDates: true });
+        const defaultMap = defaultMapUrlForClient();
         const all: Asset[] = [];
         let enriquecidoMap = new Map<string, Partial<Asset>>();
 
@@ -340,26 +388,26 @@ export function parseExcelFile(file: File): Promise<Asset[]> {
           if (rows.length < 2) continue;
           const name = sheetName.toUpperCase().replace(/\s+/g, " ").trim();
           if (name.includes("PROVEEDOR 1") || name.includes("PROVEEDOR1")) {
-            all.push(...parseProveedor1(rows));
+            all.push(...parseProveedor1(rows, defaultMap));
           } else if (name.includes("PROVEEDOR 2") || name.includes("PROVEEDOR2")) {
-            all.push(...parseProveedor2(rows));
+            all.push(...parseProveedor2(rows, defaultMap));
           } else if (name.includes("PROVEEDOR 3") || name.includes("PROVEEDOR3")) {
-            all.push(...parseProveedor3(rows));
+            all.push(...parseProveedor3(rows, defaultMap));
           } else if (name.includes("ENRIQUECIDO")) {
-            enriquecidoMap = parseEnriquecido(rows);
+            enriquecidoMap = parseEnriquecido(rows, defaultMap);
           }
         }
 
         const enriched = enrichAssets(all, enriquecidoMap);
 
-        // Deduplicar — quedarse con la primera aparición de cada id
-        const seen = new Set<string>();
-        const unique = enriched.filter(a => {
-          if (seen.has(a.id)) return false;
-          seen.add(a.id);
-          return true;
-        });
-        resolve(unique);
+        // Un id puede salir en Proveedor 1 + 2 (o 3): fusionar adm y campos para no perder Pipedrive/CRM.
+        const byId = new Map<string, Asset>();
+        for (const a of enriched) {
+          const prev = byId.get(a.id);
+          if (!prev) byId.set(a.id, a);
+          else byId.set(a.id, mergeAssetsSameId(prev, a));
+        }
+        resolve(Array.from(byId.values()));
       } catch (err) {
         reject(err instanceof Error ? err : new Error("Error al procesar el Excel"));
       }

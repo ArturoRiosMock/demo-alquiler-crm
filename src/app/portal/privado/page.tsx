@@ -6,7 +6,7 @@ import { signOut } from "@/app/login/actions";
 import type { Asset } from "@/lib/types";
 import { fmt, fmtM } from "@/lib/utils";
 import Link from "next/link";
-import { Building, MapPin, LogIn, LogOut } from "lucide-react";
+import { Building, MapPin, LogIn, LogOut, FileText } from "lucide-react";
 
 export default function PortalPrivadoPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -79,6 +79,15 @@ export default function PortalPrivadoPage() {
             </div>
           </div>
         </div>
+        <Link href="/portal/privado/ofertas" className="rounded-lg border border-border bg-white p-5 shadow-sm transition-all hover:shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-navy/10 text-navy"><FileText size={20} /></div>
+            <div>
+              <div className="text-sm font-semibold text-navy">Mis Ofertas</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">Ver y gestionar</div>
+            </div>
+          </div>
+        </Link>
       </div>
 
       <h2 className="mb-3 text-sm font-semibold text-navy">Propiedades disponibles</h2>

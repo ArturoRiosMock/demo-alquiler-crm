@@ -3,6 +3,8 @@
 import { useState, useRef } from "react";
 import { useApp } from "@/lib/context";
 import { parseExcelFile } from "@/lib/normalize-excel";
+import { enrichAssetsWithCatastro } from "@/app/actions/catastro";
+import { upsertAssets } from "@/app/actions/assets";
 import { X, Upload, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 
 interface UploadActivosModalProps {
@@ -14,6 +16,7 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
   const { addAssets, assets: existing } = useApp();
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [loadingHint, setLoadingHint] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,6 +30,7 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
     }
     setStatus("loading");
     setMessage("");
+    setLoadingHint("Leyendo y normalizando Excel…");
     try {
       const parsed = await parseExcelFile(file);
       if (parsed.length === 0) {
@@ -35,15 +39,58 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
         return;
       }
       const existingIds = new Set(existing.map(a => a.id));
-      const newCount = parsed.filter(a => !existingIds.has(a.id)).length;
-      const dupCount = parsed.length - newCount;
-      addAssets(parsed);
+      const toAdd = parsed.filter(a => !existingIds.has(a.id));
+      const toUpdate = parsed.filter(a => existingIds.has(a.id));
+
+      let enrichedNew: typeof parsed = [];
+      const parts: string[] = [];
+
+      if (toAdd.length > 0) {
+        setLoadingHint(`Consultando Catastro y geocodificación (${toAdd.length} activo(s) nuevo(s))…`);
+        const { assets, ok, skipped, failed, supabase } = await enrichAssetsWithCatastro(toAdd);
+        enrichedNew = assets;
+        parts.push(`${toAdd.length} nuevo(s): ${ok} ficha(s) completada(s) con datos del Catastro.`);
+        if (skipped > 0) parts.push(`${skipped} sin referencia catastral válida (omitido enriquecimiento).`);
+        if (failed.length > 0) {
+          parts.push(`${failed.length} error(es) Catastro: ${failed.slice(0, 3).map(f => f.ref).join(", ")}${failed.length > 3 ? "…" : ""}.`);
+        }
+        if (supabase.attempted) {
+          if (supabase.errors.length) {
+            parts.push(`Supabase: ${supabase.errors.join("; ")}`);
+          } else {
+            parts.push(`Guardado en BD: ${supabase.inserted} alta(s), ${supabase.updated} actualización(es).`);
+          }
+        }
+      }
+
+      if (toUpdate.length > 0) {
+        parts.push(`${toUpdate.length} activo(s) ya existente(s) actualizado(s) con datos del Excel.`);
+      }
+
+      if (parts.length === 0) {
+        setMessage("No se procesaron filas.");
+      } else {
+        setMessage(parts.join(" "));
+      }
+
+      const mergedForUi = [...enrichedNew, ...toUpdate];
+      addAssets(mergedForUi);
+
+      if (mergedForUi.length > 0) {
+        try {
+          const db = await upsertAssets(mergedForUi);
+          if (db.errors.length > 0) {
+            setMessage((m) => `${m} Sincronización BD: ${db.errors.slice(0, 2).join("; ")}`);
+          }
+        } catch {
+          /* sin Supabase o sin permisos: la UI ya se actualizó con addAssets */
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("propcrm-assets-updated"));
+      }
       setStatus("success");
-      setMessage(
-        dupCount > 0
-          ? `${newCount} activo(s) cargado(s). ${dupCount} duplicado(s) omitido(s).`
-          : `${newCount} activo(s) cargado(s) correctamente.`
-      );
     } catch (err) {
       setStatus("error");
       setMessage(err instanceof Error ? err.message : "Error al procesar el archivo.");
@@ -53,6 +100,7 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
   const handleClose = () => {
     setStatus("idle");
     setMessage("");
+    setLoadingHint("");
     onClose();
   };
 
@@ -85,8 +133,10 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
         <div className="p-5">
           <p className="mb-4 text-sm text-muted">
             Sube un Excel con hojas <strong>Proveedor 1</strong>, <strong>Proveedor 2</strong>,{" "}
-            <strong>Proveedor 3</strong> y opcionalmente <strong>Enriquecido</strong>. Los datos
-            se normalizarán y se añadirán al listado. Los activos con ID duplicado se omitirán.
+            <strong>Proveedor 3</strong> y opcionalmente <strong>Enriquecido</strong>. Tras importar,
+            los activos <strong>nuevos</strong> se enriquecen con la API del Catastro (referencia
+            catastral) y mapa vía Geoapify si configuráis la clave en el servidor. Los duplicados por
+            ID no se vuelven a añadir.
           </p>
 
           <input
@@ -111,7 +161,7 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
           {status === "loading" && (
             <div className="flex flex-col items-center justify-center gap-3 py-8">
               <Loader2 size={32} className="animate-spin text-gold" />
-              <span className="text-sm text-muted">Procesando Excel...</span>
+              <span className="text-center text-sm text-muted">{loadingHint || "Procesando…"}</span>
             </div>
           )}
 
@@ -136,7 +186,7 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => { setStatus("idle"); setMessage(""); }}
+                  onClick={() => { setStatus("idle"); setMessage(""); setLoadingHint(""); }}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-navy hover:bg-cream"
                 >
                   Reintentar

@@ -44,7 +44,7 @@ No test framework is configured. Python script `catastro.py` is standalone (Span
 ### Key modules
 
 - **Matching engine** (`src/lib/matching.ts`, `src/app/actions/matching.ts`): Scores buyer-asset compatibility (province, property type, strategy, budget, coastal preference). Threshold: 25 points.
-- **Excel normalization** (`src/lib/normalize-excel.ts`): Parses multi-provider Excel uploads with provider-specific column mappings (Proveedor 1/2/3 + Enriquecido). Includes deduplication and merge logic.
+- **Excel normalization** (`src/lib/normalize-excel.ts`): Parses multi-provider Excel uploads with provider-specific column mappings (Proveedor 1/2/3 + Enriquecido). **Proveedor 1** maps UF/portfolio/address-style fields; **Pipedrive, LinkedIn, NPL category, client, contract id** come from the **Proveedor 2** column layout. When the same `id` appears on multiple sheets, rows are **merged field-by-field** (not “first row wins”) so CRM fields from one sheet are not discarded if another sheet has `"—"` for those columns.
 - **Types** (`src/lib/types.ts`): All entity interfaces — Asset (80+ fields with nested `AssetAdmin`), Comprador, Vendedor, Tarea, plus supporting types.
 
 ### Database
@@ -57,6 +57,11 @@ Required in `.env.local`:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+Optional (Catastro / mapas):
+- `GEOAPIFY_API_KEY` — geocodificación y mapa estático tras importar Excel con enriquecimiento Catastro (servidor); si no existe, se usa `NEXT_PUBLIC_GEOAPIFY_KEY`
+- `NEXT_PUBLIC_GEOAPIFY_KEY` — mapas en la normalización Excel en cliente (ver `.env.example`)
+- `ASSET_UPSERT_AFTER_CATASTRO_ENRICH=true` — tras enriquecer, ejecutar `upsertAssets` en Supabase
 
 ## Conventions
 

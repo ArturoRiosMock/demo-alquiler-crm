@@ -187,6 +187,20 @@ create table if not exists public.notificaciones (
   created_at timestamptz default now()
 );
 
+create table if not exists public.ofertas (
+  id uuid primary key default gen_random_uuid(),
+  comprador_id text references public.compradores(id) on delete cascade,
+  asset_id text references public.assets(id) on delete cascade,
+  propuesta_euros numeric not null,
+  comentarios text,
+  estado text default 'pendiente' check (estado in ('pendiente', 'validada', 'rechazada', 'nda_enviado', 'nda_firmado')),
+  nda_enviado_at timestamptz,
+  nda_firmado_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (comprador_id, asset_id)
+);
+
 -- 2. INDICES
 -- ============================================================
 create index if not exists idx_assets_prov on public.assets(prov);
@@ -200,6 +214,9 @@ create index if not exists idx_documentos_comprador on public.documentos(comprad
 create index if not exists idx_oportunidades_comprador on public.oportunidades(comprador_id);
 create index if not exists idx_oportunidades_asset on public.oportunidades(asset_id);
 create index if not exists idx_notificaciones_user on public.notificaciones(user_id, leida);
+create index if not exists idx_ofertas_comprador on public.ofertas(comprador_id);
+create index if not exists idx_ofertas_asset on public.ofertas(asset_id);
+create index if not exists idx_ofertas_estado on public.ofertas(estado);
 
 -- 3. ROW LEVEL SECURITY
 -- ============================================================
@@ -213,6 +230,7 @@ alter table public.notas enable row level security;
 alter table public.documentos enable row level security;
 alter table public.oportunidades enable row level security;
 alter table public.notificaciones enable row level security;
+alter table public.ofertas enable row level security;
 
 -- Helper: check if current user is admin
 create or replace function public.is_admin()

@@ -71,11 +71,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  /** Inserta activos nuevos y sustituye por ID los que ya existan (p. ej. reimportación Excel). */
   const addAssets = useCallback((assets: Asset[]) => {
+    if (assets.length === 0) return;
     setState(prev => {
-      const existingIds = new Set(prev.assets.map(a => a.id));
-      const newAssets = assets.filter(a => !existingIds.has(a.id));
-      return { ...prev, assets: [...prev.assets, ...newAssets] };
+      const indexById = new Map(prev.assets.map((a, i) => [a.id, i]));
+      const next = [...prev.assets];
+      for (const a of assets) {
+        const i = indexById.get(a.id);
+        if (i !== undefined) {
+          next[i] = a;
+        } else {
+          next.push(a);
+          indexById.set(a.id, next.length - 1);
+        }
+      }
+      return { ...prev, assets: next };
     });
   }, []);
 

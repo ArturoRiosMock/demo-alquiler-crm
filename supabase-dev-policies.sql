@@ -47,3 +47,8 @@ create policy "oportunidades_anon_update" on public.oportunidades for update usi
 create policy "notificaciones_anon_select" on public.notificaciones for select using (true);
 create policy "notificaciones_anon_insert" on public.notificaciones for insert with check (true);
 create policy "notificaciones_anon_update" on public.notificaciones for update using (true);
+
+-- Ofertas
+create policy "ofertas_anon_select" on public.ofertas for select using (true);
+create policy "ofertas_anon_insert" on public.ofertas for insert with check (true);
+create policy "ofertas_anon_update" on public.ofertas for update using (true);
