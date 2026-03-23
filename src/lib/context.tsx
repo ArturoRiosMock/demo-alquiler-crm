@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import type { Asset, Comprador, Vendedor, Tarea } from "./types";
 import { assets as initialAssets, compradores as initialComp, vendedores as initialVend, tareasData } from "./mock-data";
+import { fetchAssets } from "@/app/actions/assets";
 
 interface AppState {
   assets: Asset[];
@@ -32,6 +33,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     vendedores: initialVend,
     tareas: tareasData,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchAssets();
+        if (cancelled || rows.length === 0) return;
+        setState((prev) => ({ ...prev, assets: rows }));
+      } catch {
+        /* Sin SUPABASE_SERVICE_ROLE_KEY, red caída o tabla vacía: se mantienen mocks */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const togglePub = useCallback((id: string) => {
     setState(prev => ({

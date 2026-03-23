@@ -1,11 +1,12 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { rowToAsset, assetToRow } from "@/lib/supabase/db";
 import type { Asset } from "@/lib/types";
 
+/** Lectura completa para el panel admin (login demo sin JWT Supabase: el anon no pasa RLS). */
 export async function fetchAssets(): Promise<Asset[]> {
-  const supabase = await createClient();
+  const supabase = await createServiceClient();
   const { data, error } = await supabase
     .from("assets")
     .select("*")
@@ -37,7 +38,7 @@ export async function fetchAssetById(id: string): Promise<Asset | null> {
 }
 
 export async function upsertAssets(assets: Asset[]): Promise<{ inserted: number; updated: number; errors: string[] }> {
-  const supabase = await createClient();
+  const supabase = await createServiceClient();
   const errors: string[] = [];
   let inserted = 0;
   let updated = 0;

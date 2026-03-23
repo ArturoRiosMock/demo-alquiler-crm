@@ -1,12 +1,10 @@
 import type { NextConfig } from "next";
-import path from "path";
 
-// Ruta absoluta explícita del proyecto
-const projectRoot = "C:\\Users\\User\\DemoAlquiler";
-
+// Raíz del proyecto en el entorno actual (Vercel/Linux y Windows local).
+// Una ruta fija tipo C:\... rompe el build o Turbopack fuera de tu máquina.
 const nextConfig: NextConfig = {
   turbopack: {
-    root: projectRoot,
+    root: process.cwd(),
   },
 };
 

@@ -82,8 +82,10 @@ export function UploadActivosModal({ open, onClose }: UploadActivosModalProps) {
           if (db.errors.length > 0) {
             setMessage((m) => `${m} Sincronización BD: ${db.errors.slice(0, 2).join("; ")}`);
           }
-        } catch {
-          /* sin Supabase o sin permisos: la UI ya se actualizó con addAssets */
+        } catch (err) {
+          setMessage((m) =>
+            `${m} No se guardó en base de datos: ${err instanceof Error ? err.message : "error desconocido"}. Revisa SUPABASE_SERVICE_ROLE_KEY en .env.local; sin BD los datos solo duran en memoria hasta recargar.`,
+          );
         }
       }
 
