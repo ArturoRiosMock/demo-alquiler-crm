@@ -3,6 +3,7 @@
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { rowToAsset, assetToRow } from "@/lib/supabase/db";
 import type { Asset } from "@/lib/types";
+import { requireAdmin, requireAdminOrVendor, requireEditPermission, requireAssetAccess } from "@/lib/auth-server";
 
 /** Lectura completa para el panel admin (login demo sin JWT Supabase: el anon no pasa RLS). */
 export async function fetchAssets(): Promise<Asset[]> {
@@ -38,6 +39,7 @@ export async function fetchAssetById(id: string): Promise<Asset | null> {
 }
 
 export async function upsertAssets(assets: Asset[]): Promise<{ inserted: number; updated: number; errors: string[] }> {
+  await requireAdmin();
   const supabase = await createServiceClient();
   const errors: string[] = [];
   let inserted = 0;
@@ -79,6 +81,8 @@ export async function upsertAssets(assets: Asset[]): Promise<{ inserted: number;
 }
 
 export async function toggleAssetPub(id: string): Promise<void> {
+  const session = await requireEditPermission("activos");
+  await requireAssetAccess(session, id);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("assets")
@@ -104,6 +108,8 @@ export async function updateAssetFields(
   fields: Record<string, string | null>
 ): Promise<void> {
   if (Object.keys(fields).length === 0) return;
+  const session = await requireEditPermission("activos");
+  await requireAssetAccess(session, id);
   const supabase = await createClient();
   const { error } = await supabase
     .from("assets")
@@ -113,6 +119,7 @@ export async function updateAssetFields(
 }
 
 export async function toggleAssetFav(id: string): Promise<void> {
+  await requireAdminOrVendor();
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("assets")

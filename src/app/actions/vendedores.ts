@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { rowToVendedor, vendedorToRow } from "@/lib/supabase/db";
 import type { Vendedor } from "@/lib/types";
+import { requireAdmin } from "@/lib/auth-server";
 
 export async function fetchVendedores(): Promise<Vendedor[]> {
   const supabase = await createClient();
@@ -26,6 +27,7 @@ export async function fetchVendedorById(id: string): Promise<Vendedor | null> {
 }
 
 export async function upsertVendedor(v: Vendedor): Promise<void> {
+  await requireAdmin();
   const supabase = await createClient();
   const row = vendedorToRow(v);
   const { error } = await supabase

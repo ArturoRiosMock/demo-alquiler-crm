@@ -1,43 +1,254 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Building2, Users, Handshake, ArrowRight } from "lucide-react";
+import { Search, X, Building2, ChevronDown } from "lucide-react";
+
+const TIPOS = [
+  "Todos los tipos de hogar",
+  "Casa / Chalet",
+  "Comercial",
+  "Edificio",
+  "Garaje",
+  "Nave",
+  "Obra Sin Finalizar",
+  "Oficina",
+  "Piso",
+  "Suelo",
+  "Suelo Industrial",
+  "Trastero",
+  "Vivienda",
+];
+
+const PROVINCIAS = [
+  "Elige provincia",
+  "Álava", "Albacete", "Alicante", "Almería", "Ávila", "Badajoz",
+  "Barcelona", "Burgos", "Cáceres", "Cádiz", "Castellón", "Ciudad Real",
+  "Córdoba", "A Coruña", "Cuenca", "Girona", "Granada", "Guadalajara",
+  "Guipúzcoa", "Huelva", "Huesca", "Jaén", "León", "Lleida",
+  "La Rioja", "Lugo", "Madrid", "Málaga", "Murcia", "Navarra",
+  "Ourense", "Asturias", "Palencia", "Las Palmas", "Pontevedra",
+  "Salamanca", "Santa Cruz de Tenerife", "Cantabria", "Segovia",
+  "Sevilla", "Soria", "Tarragona", "Teruel", "Toledo", "Valencia",
+  "Valladolid", "Vizcaya", "Zamora", "Zaragoza", "Ceuta", "Melilla",
+];
+
+const STATS = [
+  { value: "500+", label: "Activos publicados" },
+  { value: "60%", label: "Rentabilidad máxima" },
+  { value: "1ª", label: "Plataforma en España" },
+];
 
 export default function HomePage() {
+  const router = useRouter();
+  const [tipo, setTipo] = useState("Todos los tipos de hogar");
+  const [provincia, setProvincia] = useState("Elige provincia");
+  const [poblacion, setPoblacion] = useState("");
+
+  function handleSearch() {
+    const params = new URLSearchParams();
+    if (tipo !== "Todos los tipos de hogar") params.set("tipo", tipo);
+    if (provincia !== "Elige provincia") params.set("prov", provincia);
+    if (poblacion.trim()) params.set("pob", poblacion.trim());
+    const qs = params.toString();
+    router.push(`/portal${qs ? `?${qs}` : ""}`);
+  }
+
+  function handleReset() {
+    setTipo("Todos los tipos de hogar");
+    setProvincia("Elige provincia");
+    setPoblacion("");
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy to-navy3 p-8">
-      <div className="max-w-lg text-center">
-        <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-gold to-gold3 text-sm font-bold text-navy">
-          PC
-        </div>
-        <h1 className="text-4xl font-bold text-white">PropCRM</h1>
-        <p className="mt-2 text-sm text-white/40">Real Estate Asset Management — Hybrid CRM + Public Portal</p>
-        <p className="mt-1 text-xs text-white/20">NPL/REO · Gestión de carteras · Compradores y vendedores</p>
-
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <Link href="/admin" className="flex items-center gap-2 rounded-lg bg-gold px-6 py-3 text-sm font-medium text-white shadow-lg shadow-gold/20 transition-all hover:bg-gold2 hover:shadow-gold/30">
-            Panel Administrador <ArrowRight size={15} />
+    <div className="min-h-screen bg-white font-sans">
+      {/* ── NAV ── */}
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-black/5 bg-white/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-navy">
+              <Building2 size={16} className="text-gold" />
+            </div>
+            <span className="text-lg font-bold text-navy tracking-tight">Unihabitat<span className="text-gold">*</span></span>
           </Link>
-          <Link href="/portal" className="flex items-center gap-2 rounded-lg border border-white/15 px-6 py-3 text-sm font-medium text-white transition-all hover:border-white/30 hover:bg-white/5">
-            Portal Público <ArrowRight size={15} />
-          </Link>
+          <nav className="hidden items-center gap-6 text-sm font-medium text-navy/70 md:flex">
+            <Link href="/portal" className="transition-colors hover:text-navy">Propiedades</Link>
+            <Link href="/portal" className="transition-colors hover:text-navy">Inversores</Link>
+            <Link href="/portal" className="transition-colors hover:text-navy">Carteras NPL</Link>
+          </nav>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="hidden rounded-lg border border-navy/20 px-4 py-1.5 text-sm font-medium text-navy transition-all hover:border-navy/50 md:block">
+              Acceder
+            </Link>
+            <Link href="/portal" className="rounded-lg bg-navy px-4 py-1.5 text-sm font-medium text-white transition-all hover:bg-navy3">
+              Ver propiedades
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* ── HERO ── */}
+      <section className="relative min-h-screen overflow-hidden bg-white pt-16">
+        {/* Fondo decorativo */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -right-32 top-0 h-[70vh] w-[55vw] rounded-bl-[80px] bg-cream" />
+          <div className="absolute bottom-0 left-0 h-40 w-full bg-gradient-to-t from-white/80 to-transparent" />
         </div>
 
-        <div className="mt-10 grid grid-cols-3 gap-4 text-center">
-          {[
-            ["6", "Activos", Building2],
-            ["5", "Compradores", Users],
-            ["5", "Vendedores", Handshake],
-          ].map(([val, lbl, Icon]) => {
-            const I = Icon as typeof Building2;
-            return (
-              <div key={lbl as string}>
-                <I size={16} className="mx-auto mb-1 text-white/20" />
-                <div className="text-xl font-bold text-gold">{val as string}</div>
-                <div className="text-[10px] font-semibold uppercase tracking-[1.5px] text-white/30">{lbl as string}</div>
+        <div className="relative mx-auto flex max-w-7xl flex-col items-start gap-16 px-6 py-20 lg:flex-row lg:items-center lg:py-32">
+          {/* Texto izquierda */}
+          <div className="flex-1 lg:max-w-[48%]">
+            <span className="mb-4 inline-block rounded-full border border-gold/30 bg-gold/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest text-gold">
+              Especial Inversores
+            </span>
+            <h1 className="text-4xl font-black leading-[1.1] text-navy lg:text-5xl xl:text-6xl">
+              La plataforma n.º&nbsp;1 en compra de activos&nbsp;<span className="relative whitespace-nowrap">
+                inmobiliarios
+                <svg className="absolute -bottom-2 left-0 w-full" viewBox="0 0 300 12" fill="none">
+                  <path d="M0 10 Q150 0 300 10" stroke="#b8933a" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+              </span>.
+            </h1>
+            <p className="mt-8 max-w-md text-base leading-relaxed text-navy/60">
+              Adelántate en activos judicializados y consigue rentabilidades de hasta un <strong className="text-navy">60%</strong> en el mercado inmobiliario.
+            </p>
+
+            {/* Stats */}
+            <div className="mt-10 flex gap-8">
+              {STATS.map((s) => (
+                <div key={s.label}>
+                  <div className="text-2xl font-black text-navy">{s.value}</div>
+                  <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-navy/40">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Imagen de ambiente */}
+            <div className="mt-12 overflow-hidden rounded-2xl shadow-2xl shadow-navy/10">
+              <img
+                src="https://images.unsplash.com/photo-1497366216548-37526070297c?w=700&q=80"
+                alt="Activos inmobiliarios"
+                className="h-52 w-full object-cover"
+              />
+            </div>
+          </div>
+
+          {/* Formulario de búsqueda derecha */}
+          <div className="w-full lg:w-[380px] xl:w-[420px]">
+            <div className="rounded-2xl border border-border bg-white shadow-2xl shadow-navy/10">
+              {/* Header */}
+              <div className="border-b border-border px-6 py-5">
+                <h2 className="text-xl font-bold text-navy">
+                  Encuentra el tuyo<span className="text-gold">_</span>
+                </h2>
               </div>
-            );
-          })}
+
+              <div className="space-y-4 p-6">
+                {/* Tipo */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy/50">
+                    Tipo
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={tipo}
+                      onChange={(e) => setTipo(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-border bg-cream/50 px-4 py-3 pr-10 text-sm text-navy focus:border-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/10"
+                    >
+                      {TIPOS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-navy/40" />
+                  </div>
+                </div>
+
+                {/* Provincia */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy/50">
+                    Provincia
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={provincia}
+                      onChange={(e) => setProvincia(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-border bg-cream/50 px-4 py-3 pr-10 text-sm text-navy focus:border-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/10"
+                    >
+                      {PROVINCIAS.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-navy/40" />
+                  </div>
+                </div>
+
+                {/* Población */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy/50">
+                    Población
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Escribe una población..."
+                    value={poblacion}
+                    onChange={(e) => setPoblacion(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    className="w-full rounded-lg border border-border bg-cream/50 px-4 py-3 text-sm text-navy placeholder:text-navy/30 focus:border-navy/40 focus:outline-none focus:ring-2 focus:ring-navy/10"
+                  />
+                </div>
+
+                {/* Botón búsqueda */}
+                <button
+                  onClick={handleSearch}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-navy py-3.5 text-sm font-bold uppercase tracking-widest text-white transition-all hover:bg-navy3 active:scale-[0.98]"
+                >
+                  <Search size={16} />
+                  Búsqueda
+                </button>
+
+                {/* Reiniciar */}
+                <button
+                  onClick={handleReset}
+                  className="flex w-full items-center justify-center gap-1.5 py-1 text-xs font-medium text-navy/40 transition-colors hover:text-navy/70"
+                >
+                  <X size={12} />
+                  Reiniciar
+                </button>
+              </div>
+            </div>
+
+            {/* Badge bajo formulario */}
+            <p className="mt-4 text-center text-[11px] text-navy/30">
+              Accede a <strong className="text-navy/50">+500 activos judicializados</strong> en toda España
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* ── FEATURES BAND ── */}
+      <section className="border-t border-border bg-cream py-16">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+            {[
+              { title: "Cesión de Crédito", desc: "Adquiere créditos hipotecarios con grandes descuentos sobre el valor de tasación." },
+              { title: "Carteras NPL", desc: "Accede a carteras completas de préstamos dudosos con potencial de máxima rentabilidad." },
+              { title: "REO Directo", desc: "Inmuebles adjudicados listos para comprar, sin cargas ocultas ni procesos judiciales." },
+            ].map((f) => (
+              <div key={f.title} className="rounded-xl border border-border bg-white p-6 shadow-sm">
+                <h3 className="text-base font-bold text-navy">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-navy/50">{f.desc}</p>
+                <button
+                  onClick={() => router.push("/portal")}
+                  className="mt-4 text-xs font-semibold text-gold underline underline-offset-2 hover:text-gold2"
+                >
+                  Ver propiedades →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

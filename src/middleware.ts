@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const devUser = getDevUser(request);
 
-  // Admin routes: require admin role
+  // Admin routes: require admin or vendedor role
   if (pathname.startsWith("/admin")) {
     if (!devUser) {
       const url = request.nextUrl.clone();
@@ -18,9 +18,14 @@ export async function middleware(request: NextRequest) {
       url.searchParams.set("redirect", pathname);
       return NextResponse.redirect(url);
     }
-    if (devUser.role !== "admin") {
+    if (devUser.role !== "admin" && devUser.role !== "vendedor") {
       const url = request.nextUrl.clone();
       url.pathname = "/portal/privado";
+      return NextResponse.redirect(url);
+    }
+    if (devUser.role === "vendedor" && pathname.startsWith("/admin/config")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/admin";
       return NextResponse.redirect(url);
     }
   }
@@ -36,7 +41,7 @@ export async function middleware(request: NextRequest) {
   // Login: redirect authenticated users
   if (pathname === "/login" && devUser) {
     const url = request.nextUrl.clone();
-    url.pathname = devUser.role === "admin" ? "/admin" : "/portal/privado";
+    url.pathname = (devUser.role === "admin" || devUser.role === "vendedor") ? "/admin" : "/portal/privado";
     return NextResponse.redirect(url);
   }
 

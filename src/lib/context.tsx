@@ -2,8 +2,11 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import type { Asset, Comprador, Vendedor, Tarea } from "./types";
+import type { VendorPermission, UserSession } from "./permissions";
 import { assets as initialAssets, compradores as initialComp, vendedores as initialVend, tareasData } from "./mock-data";
 import { fetchAssets } from "@/app/actions/assets";
+import { getDevAuthFromDocument } from "@/lib/auth-helpers";
+import { fetchVendorPermissions, fetchVendorAssignedAssetIds, fetchVendorAssignedCompradorIds } from "@/app/actions/permissions";
 
 interface AppState {
   assets: Asset[];
@@ -13,6 +16,10 @@ interface AppState {
 }
 
 interface AppContextType extends AppState {
+  session: UserSession | null;
+  permissions: VendorPermission[];
+  assignedAssetIds: string[];
+  assignedCompradorIds: string[];
   togglePub: (id: string) => void;
   toggleFav: (id: string) => void;
   toggleChk: (id: string) => void;
@@ -22,6 +29,7 @@ interface AppContextType extends AppState {
   getAsset: (id: string) => Asset | undefined;
   getComprador: (id: string) => Comprador | undefined;
   getVendedor: (id: string) => Vendedor | undefined;
+  refreshAssignments: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -34,21 +42,64 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tareas: tareasData,
   });
 
+  const [session, setSession] = useState<UserSession | null>(null);
+  const [permissions, setPermissions] = useState<VendorPermission[]>([]);
+  const [assignedAssetIds, setAssignedAssetIds] = useState<string[]>([]);
+  const [assignedCompradorIds, setAssignedCompradorIds] = useState<string[]>([]);
+
   useEffect(() => {
+    const s = getDevAuthFromDocument();
+    setSession(s);
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
     let cancelled = false;
+
     (async () => {
       try {
         const rows = await fetchAssets();
         if (cancelled || rows.length === 0) return;
         setState((prev) => ({ ...prev, assets: rows }));
-      } catch {
-        /* Sin SUPABASE_SERVICE_ROLE_KEY, red caída o tabla vacía: se mantienen mocks */
-      }
+      } catch { /* keep mocks */ }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+
+    if (session.role === "vendedor" && session.vendedorId) {
+      const vid = session.vendedorId;
+      fetchVendorPermissions(vid).then((p) => !cancelled && setPermissions(p)).catch(() => {});
+      fetchVendorAssignedAssetIds(vid).then((ids) => !cancelled && setAssignedAssetIds(ids)).catch(() => {});
+      fetchVendorAssignedCompradorIds(vid).then((ids) => !cancelled && setAssignedCompradorIds(ids)).catch(() => {});
+    }
+
+    return () => { cancelled = true; };
+  }, [session]);
+
+  const refreshAssignments = useCallback(async () => {
+    if (session?.role === "vendedor" && session.vendedorId) {
+      const [aIds, cIds] = await Promise.all([
+        fetchVendorAssignedAssetIds(session.vendedorId),
+        fetchVendorAssignedCompradorIds(session.vendedorId),
+      ]);
+      setAssignedAssetIds(aIds);
+      setAssignedCompradorIds(cIds);
+    }
+  }, [session]);
+
+  const filteredAssets = session?.role === "vendedor" && assignedAssetIds.length > 0
+    ? state.assets.filter((a) => assignedAssetIds.includes(a.id))
+    : session?.role === "vendedor"
+      ? []
+      : state.assets;
+
+  const filteredCompradores = session?.role === "vendedor" && assignedCompradorIds.length > 0
+    ? state.compradores.filter((c) => assignedCompradorIds.includes(c.id))
+    : session?.role === "vendedor"
+      ? []
+      : state.compradores;
+
+  const filteredTareas = session?.role === "vendedor"
+    ? state.tareas.filter((t) => t.agente === session.nombre)
+    : state.tareas;
 
   const togglePub = useCallback((id: string) => {
     setState(prev => ({
@@ -58,37 +109,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleFav = useCallback((id: string) => {
-    setState(prev => ({
-      ...prev,
-      assets: prev.assets.map(a => a.id === id ? { ...a, fav: !a.fav } : a),
-    }));
+    setState(prev => ({ ...prev, assets: prev.assets.map(a => a.id === id ? { ...a, fav: !a.fav } : a) }));
   }, []);
 
   const toggleChk = useCallback((id: string) => {
-    setState(prev => ({
-      ...prev,
-      assets: prev.assets.map(a => a.id === id ? { ...a, chk: !a.chk } : a),
-    }));
+    setState(prev => ({ ...prev, assets: prev.assets.map(a => a.id === id ? { ...a, chk: !a.chk } : a) }));
   }, []);
 
   const toggleChkAll = useCallback((ids: string[]) => {
     setState(prev => {
       const allChecked = ids.every(id => prev.assets.find(a => a.id === id)?.chk);
-      return {
-        ...prev,
-        assets: prev.assets.map(a => ids.includes(a.id) ? { ...a, chk: !allChecked } : a),
-      };
+      return { ...prev, assets: prev.assets.map(a => ids.includes(a.id) ? { ...a, chk: !allChecked } : a) };
     });
   }, []);
 
   const toggleTaskDone = useCallback((id: string) => {
-    setState(prev => ({
-      ...prev,
-      tareas: prev.tareas.map(t => t.id === id ? { ...t, done: !t.done } : t),
-    }));
+    setState(prev => ({ ...prev, tareas: prev.tareas.map(t => t.id === id ? { ...t, done: !t.done } : t) }));
   }, []);
 
-  /** Inserta activos nuevos y sustituye por ID los que ya existan (p. ej. reimportación Excel). */
   const addAssets = useCallback((assets: Asset[]) => {
     if (assets.length === 0) return;
     setState(prev => {
@@ -96,12 +134,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = [...prev.assets];
       for (const a of assets) {
         const i = indexById.get(a.id);
-        if (i !== undefined) {
-          next[i] = a;
-        } else {
-          next.push(a);
-          indexById.set(a.id, next.length - 1);
-        }
+        if (i !== undefined) next[i] = a;
+        else { next.push(a); indexById.set(a.id, next.length - 1); }
       }
       return { ...prev, assets: next };
     });
@@ -112,7 +146,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const getVendedor = useCallback((id: string) => state.vendedores.find(v => v.id === id), [state.vendedores]);
 
   return (
-    <AppContext.Provider value={{ ...state, togglePub, toggleFav, toggleChk, toggleChkAll, toggleTaskDone, addAssets, getAsset, getComprador, getVendedor }}>
+    <AppContext.Provider value={{
+      assets: filteredAssets,
+      compradores: filteredCompradores,
+      vendedores: state.vendedores,
+      tareas: filteredTareas,
+      session,
+      permissions,
+      assignedAssetIds,
+      assignedCompradorIds,
+      togglePub, toggleFav, toggleChk, toggleChkAll, toggleTaskDone,
+      addAssets, getAsset, getComprador, getVendedor,
+      refreshAssignments,
+    }}>
       {children}
     </AppContext.Provider>
   );

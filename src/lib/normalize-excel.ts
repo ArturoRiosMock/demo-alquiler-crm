@@ -370,6 +370,34 @@ function mergeAssetsSameId(prev: Asset, curr: Asset): Asset {
   };
 }
 
+type SheetFormat = "prov1" | "prov2" | "prov3" | "enriquecido" | "unknown";
+
+const FORMAT_ANCHORS: { format: SheetFormat; col0: string; verify: string[] }[] = [
+  { format: "prov2", col0: "ID PIPEDRIVE", verify: ["ASSET ID", "ASSET PROVINCE"] },
+  { format: "prov1", col0: "DATA REF",     verify: ["UF", "PROVINCIA"] },
+  { format: "prov3", col0: "CARTERA",      verify: ["NDG", "ADRESS"] },
+  { format: "enriquecido", col0: "REFERENCIA", verify: ["CLASE", "USO", "BIEN"] },
+];
+
+function detectFormatByHeader(header: unknown[]): { format: SheetFormat; offset: number } {
+  const upper = header.map(h => String(h ?? "").toUpperCase().trim());
+
+  for (const { format, col0, verify } of FORMAT_ANCHORS) {
+    const idx = upper.findIndex(h => h.includes(col0));
+    if (idx === -1) continue;
+    const rest = upper.slice(idx);
+    if (verify.every(k => rest.some(h => h.includes(k)))) {
+      return { format, offset: idx };
+    }
+  }
+  return { format: "unknown", offset: 0 };
+}
+
+function shiftRows(rows: unknown[][], offset: number): unknown[][] {
+  if (offset === 0) return rows;
+  return rows.map(r => (r as unknown[]).slice(offset));
+}
+
 export function parseExcelFile(file: File): Promise<Asset[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -381,35 +409,226 @@ export function parseExcelFile(file: File): Promise<Asset[]> {
         const defaultMap = defaultMapUrlForClient();
         const all: Asset[] = [];
         let enriquecidoMap = new Map<string, Partial<Asset>>();
+        const extraColumns = new Map<string, Record<string, string>>();
 
         for (const sheetName of wb.SheetNames) {
           const ws = wb.Sheets[sheetName];
           const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
           if (rows.length < 2) continue;
           const name = sheetName.toUpperCase().replace(/\s+/g, " ").trim();
+
+          let format: SheetFormat = "unknown";
+          let offset = 0;
+
           if (name.includes("PROVEEDOR 1") || name.includes("PROVEEDOR1")) {
-            all.push(...parseProveedor1(rows, defaultMap));
+            format = "prov1";
           } else if (name.includes("PROVEEDOR 2") || name.includes("PROVEEDOR2")) {
-            all.push(...parseProveedor2(rows, defaultMap));
+            format = "prov2";
           } else if (name.includes("PROVEEDOR 3") || name.includes("PROVEEDOR3")) {
-            all.push(...parseProveedor3(rows, defaultMap));
+            format = "prov3";
           } else if (name.includes("ENRIQUECIDO")) {
-            enriquecidoMap = parseEnriquecido(rows, defaultMap);
+            format = "enriquecido";
+          } else {
+            const detected = detectFormatByHeader(rows[0] as unknown[]);
+            format = detected.format;
+            offset = detected.offset;
+          }
+
+          const shifted = shiftRows(rows, offset);
+          const header = (rows[0] as unknown[]).map(h => String(h ?? "").toUpperCase().trim());
+
+          switch (format) {
+            case "prov1":
+              all.push(...parseProveedor1(shifted, defaultMap));
+              break;
+            case "prov2": {
+              all.push(...parseProveedor2(shifted, defaultMap));
+              if (offset > 0) {
+                for (let r = 1; r < rows.length; r++) {
+                  const row = rows[r] as unknown[];
+                  const id = s((shifted[r] as unknown[])?.[7]);
+                  if (!id || id === "—") continue;
+                  const extra: Record<string, string> = {};
+                  for (let c = 0; c < offset; c++) {
+                    const key = header[c] || `COL${c}`;
+                    extra[key] = s(row[c]);
+                  }
+                  extraColumns.set(id, extra);
+                }
+              }
+              break;
+            }
+            case "prov3":
+              all.push(...parseProveedor3(shifted, defaultMap));
+              break;
+            case "enriquecido":
+              enriquecidoMap = parseEnriquecido(shifted, defaultMap);
+              break;
+            default:
+              break;
           }
         }
 
         const enriched = enrichAssets(all, enriquecidoMap);
 
-        // Un id puede salir en Proveedor 1 + 2 (o 3): fusionar adm y campos para no perder Pipedrive/CRM.
         const byId = new Map<string, Asset>();
         for (const a of enriched) {
           const prev = byId.get(a.id);
           if (!prev) byId.set(a.id, a);
           else byId.set(a.id, mergeAssetsSameId(prev, a));
         }
+
+        for (const [id, extra] of extraColumns) {
+          const asset = byId.get(id);
+          if (!asset) continue;
+          if (extra.PROPIETARIO && extra.PROPIETARIO !== "—") asset.ownerName = extra.PROPIETARIO;
+          if (extra.TELEFONO && extra.TELEFONO !== "—") asset.ownerTel = extra.TELEFONO;
+          if (extra.MAIL && extra.MAIL !== "—") asset.ownerMail = extra.MAIL;
+          if (extra.PUBLICAR?.toUpperCase() === "SI") asset.pub = true;
+          if (extra.CATEGORIA && extra.CATEGORIA !== "—") asset.cat = extra.CATEGORIA;
+        }
+
         resolve(Array.from(byId.values()));
       } catch (err) {
         reject(err instanceof Error ? err : new Error("Error al procesar el Excel"));
+      }
+    };
+    reader.onerror = () => reject(new Error("Error al leer el archivo"));
+    reader.readAsBinaryString(file);
+  });
+}
+
+/** Devuelve las primeras `maxRows` filas de cada hoja sin parsear, para enviar a Claude. */
+export function extractRawPreview(
+  file: File,
+  maxRows = 5,
+): Promise<{ sheetName: string; rows: string[][] }[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        if (!data) { reject(new Error("No se pudo leer el archivo")); return; }
+        const wb = XLSX.read(data, { type: "binary", cellDates: true });
+        const sheets: { sheetName: string; rows: string[][] }[] = [];
+
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          const all: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+          const rows = all.slice(0, maxRows).map((r) => (r as unknown[]).map((c) => String(c ?? "")));
+          if (rows.length > 0) sheets.push({ sheetName, rows });
+        }
+
+        resolve(sheets);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Error al leer preview del Excel"));
+      }
+    };
+    reader.onerror = () => reject(new Error("Error al leer el archivo"));
+    reader.readAsBinaryString(file);
+  });
+}
+
+/**
+ * Parsea un Excel usando un mapeo de columnas proporcionado por Claude.
+ * `mapping` es un diccionario colIndex → fieldName (ej. { 0: "id", 3: "prov", 5: "precio" }).
+ * Soporta campos planos de Asset y campos "adm.xxx" para AssetAdmin.
+ */
+export function parseWithMapping(
+  file: File,
+  mapping: Record<number, string>,
+): Promise<Asset[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        if (!data) { reject(new Error("No se pudo leer el archivo")); return; }
+        const wb = XLSX.read(data, { type: "binary", cellDates: true });
+        const defaultMap = defaultMapUrlForClient();
+        const assets: Asset[] = [];
+
+        for (const sheetName of wb.SheetNames) {
+          const ws = wb.Sheets[sheetName];
+          const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+          if (rows.length < 2) continue;
+
+          for (let r = 1; r < rows.length; r++) {
+            const row = rows[r] as unknown[];
+            const fields: Record<string, string> = {};
+            const admFields: Record<string, string> = {};
+
+            for (const [colStr, fieldName] of Object.entries(mapping)) {
+              const col = parseInt(colStr, 10);
+              const val = s(row[col]);
+              if (fieldName.startsWith("adm.")) {
+                admFields[fieldName.slice(4)] = val;
+              } else {
+                fields[fieldName] = val;
+              }
+            }
+
+            const id = fields.id;
+            if (!id || id === "—") continue;
+
+            const tip = fields.tip ?? "Vivienda";
+            const fase = fields.fase ?? "—";
+            const precio = toNum(fields.precio);
+
+            const adm = emptyAdm();
+            for (const [k, v] of Object.entries(admFields)) {
+              if (k in adm) (adm as unknown as Record<string, string>)[k] = v;
+            }
+            if (fields.addr) adm.addr = fields.addr;
+            if (fields.prov) adm.prov = fields.prov.toUpperCase();
+            if (fields.pob) adm.city = fields.pob;
+            if (fields.cp) adm.zip = fields.cp;
+            if (fields.catRef) adm.cref = fields.catRef;
+
+            assets.push({
+              id,
+              cat: fields.cat ?? "—",
+              prov: fields.prov ?? "—",
+              pob: fields.pob ?? "—",
+              cp: fields.cp ?? "—",
+              addr: fields.addr ?? "—",
+              tip,
+              tipC: tipToTipC(tip),
+              fase,
+              faseC: faseToFaseC(fase),
+              precio,
+              fav: false,
+              chk: false,
+              sqm: toNum(fields.sqm),
+              tvia: fields.tvia ?? "—",
+              nvia: fields.nvia ?? "—",
+              num: fields.num ?? "—",
+              esc: fields.esc ?? "—",
+              pla: fields.pla ?? "—",
+              pta: fields.pta ?? "—",
+              map: defaultMap,
+              catRef: fields.catRef ?? "—",
+              clase: fields.clase ?? "—",
+              uso: fields.uso ?? "—",
+              bien: fields.bien ?? tip,
+              supC: fields.supC ?? "—",
+              supG: fields.supG ?? "—",
+              coef: fields.coef ?? "—",
+              ccaa: fields.ccaa ?? "—",
+              fullAddr: fields.fullAddr ?? fields.addr ?? "—",
+              desc: fields.desc ?? fields.addr ?? "—",
+              ownerName: fields.ownerName ?? "—",
+              ownerTel: fields.ownerTel ?? "—",
+              ownerMail: fields.ownerMail ?? "—",
+              adm,
+              pub: false,
+            });
+          }
+        }
+
+        resolve(assets);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error("Error al parsear con mapeo"));
       }
     };
     reader.onerror = () => reject(new Error("Error al leer el archivo"));

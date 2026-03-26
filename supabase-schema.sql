@@ -201,6 +201,31 @@ create table if not exists public.ofertas (
   unique (comprador_id, asset_id)
 );
 
+-- VENDEDOR PERMISSIONS: per-vendor section access control
+create table if not exists public.vendedor_permissions (
+  vendedor_id text references public.vendedores(id) on delete cascade,
+  section text not null,
+  can_view boolean default false,
+  can_edit boolean default false,
+  primary key (vendedor_id, section)
+);
+
+-- VENDEDOR ↔ ASSETS assignment (many-to-many)
+create table if not exists public.vendedor_assets (
+  vendedor_id text references public.vendedores(id) on delete cascade,
+  asset_id text references public.assets(id) on delete cascade,
+  assigned_at timestamptz default now(),
+  primary key (vendedor_id, asset_id)
+);
+
+-- VENDEDOR ↔ COMPRADORES assignment (many-to-many)
+create table if not exists public.vendedor_compradores (
+  vendedor_id text references public.vendedores(id) on delete cascade,
+  comprador_id text references public.compradores(id) on delete cascade,
+  assigned_at timestamptz default now(),
+  primary key (vendedor_id, comprador_id)
+);
+
 -- 2. INDICES
 -- ============================================================
 create index if not exists idx_assets_prov on public.assets(prov);
@@ -217,6 +242,12 @@ create index if not exists idx_notificaciones_user on public.notificaciones(user
 create index if not exists idx_ofertas_comprador on public.ofertas(comprador_id);
 create index if not exists idx_ofertas_asset on public.ofertas(asset_id);
 create index if not exists idx_ofertas_estado on public.ofertas(estado);
+
+create index if not exists idx_vendedor_perms_vendor on public.vendedor_permissions(vendedor_id);
+create index if not exists idx_vendedor_assets_vendor on public.vendedor_assets(vendedor_id);
+create index if not exists idx_vendedor_assets_asset on public.vendedor_assets(asset_id);
+create index if not exists idx_vendedor_compradores_vendor on public.vendedor_compradores(vendedor_id);
+create index if not exists idx_vendedor_compradores_comprador on public.vendedor_compradores(comprador_id);
 
 -- 3. ROW LEVEL SECURITY
 -- ============================================================
@@ -307,6 +338,21 @@ create policy "notificaciones_own" on public.notificaciones
   for select using (user_id = auth.uid());
 create policy "notificaciones_own_update" on public.notificaciones
   for update using (user_id = auth.uid());
+
+-- VENDEDOR_PERMISSIONS: admin only
+alter table public.vendedor_permissions enable row level security;
+create policy "vendedor_permissions_admin" on public.vendedor_permissions
+  for all using (public.is_admin());
+
+-- VENDEDOR_ASSETS: admin only
+alter table public.vendedor_assets enable row level security;
+create policy "vendedor_assets_admin" on public.vendedor_assets
+  for all using (public.is_admin());
+
+-- VENDEDOR_COMPRADORES: admin only
+alter table public.vendedor_compradores enable row level security;
+create policy "vendedor_compradores_admin" on public.vendedor_compradores
+  for all using (public.is_admin());
 
 -- 4. STORAGE BUCKET
 -- ============================================================

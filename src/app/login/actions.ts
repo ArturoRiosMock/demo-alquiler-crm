@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { upsertComprador } from "@/app/actions/compradores";
+import { createServiceClient } from "@/lib/supabase/server";
 
 const cookieBase = {
   path: "/" as const,
@@ -17,6 +18,7 @@ const cookieBase = {
 const DEV_USERS: Record<string, { password: string; role: string; nombre: string }> = {
   "admin@propcrm.com": { password: "Admin1234!", role: "admin", nombre: "Administrador" },
   "cliente@propcrm.com": { password: "Cliente1234!", role: "cliente", nombre: "Cliente Demo" },
+  "vendedor@propcrm.com": { password: "Vendedor1234!", role: "vendedor", nombre: "Carlos Martínez" },
 };
 
 const ZW_RE = /[\u200b\u200c\u200d\ufeff]/g;
@@ -46,16 +48,33 @@ export async function signIn(formData: FormData) {
   if (!devUser) {
     return {
       error:
-        "Email no reconocido. Cuentas demo: admin@propcrm.com o cliente@propcrm.com.",
+        "Email no reconocido. Cuentas demo: admin@propcrm.com, vendedor@propcrm.com o cliente@propcrm.com.",
     };
   }
   if (devUser.password !== passwordKey) {
     return { error: "Contraseña incorrecta." };
   }
 
+  let vendedorId: string | undefined;
+  if (devUser.role === "vendedor") {
+    try {
+      const sb = await createServiceClient();
+      const { data } = await sb
+        .from("vendedores")
+        .select("id")
+        .eq("email", emailKey)
+        .maybeSingle();
+      vendedorId = data?.id ?? undefined;
+    } catch { /* BD no disponible — continuamos sin vendedorId */ }
+  }
+
   const cookieStore = await cookies();
-  cookieStore.set("dev-auth", JSON.stringify({ email: emailKey, role: devUser.role, nombre: devUser.nombre }), cookieBase);
-  const dest = redirectTo || (devUser.role === "admin" ? "/admin" : "/portal/privado");
+  cookieStore.set(
+    "dev-auth",
+    JSON.stringify({ email: emailKey, role: devUser.role, nombre: devUser.nombre, ...(vendedorId ? { vendedorId } : {}) }),
+    cookieBase,
+  );
+  const dest = redirectTo || (devUser.role === "admin" || devUser.role === "vendedor" ? "/admin" : "/portal/privado");
   redirect(dest);
 }
 

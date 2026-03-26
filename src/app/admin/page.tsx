@@ -7,6 +7,7 @@ import Link from "next/link";
 import type { Asset } from "@/lib/types";
 import { Search, Star, X, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Plus, Check } from "lucide-react";
 import { UploadActivosModal } from "./UploadActivosModal";
+import { DashboardVendedor } from "./DashboardVendedor";
 
 type SortCol = "prov" | "pob" | "sqm" | "precio" | "cat" | "addr" | "cp" | "tip" | "fase";
 
@@ -23,7 +24,9 @@ const pillClass: Record<string, string> = {
 };
 
 export default function ActivosPage() {
-  const { assets, toggleFav, toggleChk, toggleChkAll } = useApp();
+  const { assets, toggleFav, toggleChk, toggleChkAll, session } = useApp();
+
+  if (session?.role === "vendedor") return <DashboardVendedor />;
   const [uploadOpen, setUploadOpen] = useState(false);
   const [q, setQ] = useState("");
   const [fCat, setFCat] = useState("");
@@ -88,7 +91,7 @@ export default function ActivosPage() {
           <span className="rounded-md bg-cream px-2.5 py-0.5 text-xs font-medium text-muted">{assets.length} activos</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-md bg-gold/10 px-2.5 py-1 text-xs font-medium text-gold">Admin</span>
+          <span className="rounded-md bg-gold/10 px-2.5 py-1 text-xs font-medium text-gold">{session?.role === "admin" ? "Admin" : "Vendedor"}</span>
           <button
             type="button"
             onClick={() => setUploadOpen(true)}
